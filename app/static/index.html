@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Website Health Monitor</title>
+  <style>
+    :root {
+      --bg: #f4f6fb;
+      --card: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --border: #d1d5db;
+      --accent: #2563eb;
+      --accent-hover: #1d4ed8;
+      --online: #15803d;
+      --online-bg: #dcfce7;
+      --offline: #b91c1c;
+      --offline-bg: #fee2e2;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0f172a;
+        --card: #1e293b;
+        --text: #e5e7eb;
+        --muted: #94a3b8;
+        --border: #334155;
+        --accent: #3b82f6;
+        --accent-hover: #60a5fa;
+        --online: #4ade80;
+        --online-bg: #14532d;
+        --offline: #f87171;
+        --offline-bg: #7f1d1d;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 64px 16px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    main { width: 100%; max-width: 560px; }
+    h1 { margin: 0 0 4px; font-size: 1.75rem; }
+    .subtitle { margin: 0 0 24px; color: var(--muted); }
+    form { display: flex; gap: 8px; }
+    input {
+      flex: 1;
+      min-width: 0;
+      padding: 12px 14px;
+      font-size: 1rem;
+      color: var(--text);
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+    input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+    button {
+      padding: 12px 20px;
+      font-size: 1rem;
+      font-weight: 600;
+      color: #fff;
+      background: var(--accent);
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    button:hover { background: var(--accent-hover); }
+    button:disabled { opacity: 0.6; cursor: wait; }
+    .card {
+      margin-top: 24px;
+      padding: 20px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+    }
+    .badge {
+      display: inline-block;
+      padding: 4px 12px;
+      font-weight: 700;
+      border-radius: 999px;
+    }
+    .badge.online { color: var(--online); background: var(--online-bg); }
+    .badge.offline { color: var(--offline); background: var(--offline-bg); }
+    dl {
+      display: grid;
+      grid-template-columns: max-content 1fr;
+      gap: 8px 16px;
+      margin: 16px 0 0;
+    }
+    dt { color: var(--muted); }
+    dd { margin: 0; overflow-wrap: anywhere; }
+    .error { margin: 0; color: var(--offline); }
+    footer { margin-top: 32px; font-size: 0.875rem; color: var(--muted); }
+    footer a { color: var(--accent); }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Website Health Monitor</h1>
+    <p class="subtitle">Enter a website address to see if it's online.</p>
+
+    <form id="check-form">
+      <input id="url" type="text" placeholder="github.com" autocomplete="url" required autofocus>
+      <button id="check-button" type="submit">Check</button>
+    </form>
+
+    <!-- Shown after a successful check -->
+    <section id="result" class="card" hidden>
+      <span id="status-badge" class="badge"></span>
+      <dl>
+        <dt>Website</dt>        <dd id="result-url"></dd>
+        <dt>Status code</dt>    <dd id="result-code"></dd>
+        <dt>Response time</dt>  <dd id="result-time"></dd>
+        <dt>Error</dt>          <dd id="result-error"></dd>
+        <dt>Checked at</dt>     <dd id="result-checked-at"></dd>
+      </dl>
+    </section>
+
+    <!-- Shown when the URL was rejected (invalid or blocked) -->
+    <section id="problem" class="card" hidden>
+      <p id="problem-message" class="error"></p>
+    </section>
+
+    <footer>
+      Developer tools: <a href="/docs">API docs</a> · <a href="/health">App health</a>
+    </footer>
+  </main>
+
+  <script>
+    const form = document.getElementById("check-form");
+    const input = document.getElementById("url");
+    const button = document.getElementById("check-button");
+    const resultCard = document.getElementById("result");
+    const problemCard = document.getElementById("problem");
+
+    // Let people type "github.com" instead of "https://github.com".
+    function withScheme(url) {
+      return /^[a-z][a-z0-9+.-]*:/i.test(url) ? url : "https://" + url;
+    }
+
+    // Turn the API's error response (HTTP 400 or 422) into one readable sentence.
+    function errorMessage(body) {
+      if (typeof body.detail === "string") return body.detail;
+      if (Array.isArray(body.detail) && body.detail.length > 0) {
+        return body.detail[0].msg.replace(/^Value error, /, "");
+      }
+      return "Something went wrong. Please try again.";
+    }
+
+    function showResult(data) {
+      const badge = document.getElementById("status-badge");
+      badge.textContent = data.status === "online" ? "✓ Online" : "✗ Offline";
+      badge.className = "badge " + data.status;
+      document.getElementById("result-url").textContent = data.url;
+      document.getElementById("result-code").textContent = data.status_code ?? "—";
+      document.getElementById("result-time").textContent = Math.round(data.response_time_ms) + " ms";
+      document.getElementById("result-error").textContent = data.error ?? "None";
+      document.getElementById("result-checked-at").textContent = new Date().toLocaleTimeString();
+      problemCard.hidden = true;
+      resultCard.hidden = false;
+    }
+
+    function showProblem(message) {
+      document.getElementById("problem-message").textContent = message;
+      resultCard.hidden = true;
+      problemCard.hidden = false;
+    }
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault(); // stay on this page instead of reloading it
+      const url = withScheme(input.value.trim());
+      input.value = url;
+      button.disabled = true;
+      button.textContent = "Checking…";
+
+      try {
+        // Call our own API - exactly what "Try it out" does on /docs.
+        const response = await fetch("/check", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url }),
+        });
+        const body = await response.json();
+        if (response.ok) {
+          showResult(body);
+        } else {
+          showProblem(errorMessage(body));
+        }
+      } catch {
+        showProblem("Could not reach the Website Health Monitor server. Is it running?");
+      } finally {
+        button.disabled = false;
+        button.textContent = "Check";
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,5 @@
+# Packages needed to DEVELOP the application (tests + linting).
+# The line below also installs everything from requirements.txt.
+-r requirements.txt
+pytest==9.1.1
+ruff==0.17.3
